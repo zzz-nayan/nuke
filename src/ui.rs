@@ -110,44 +110,37 @@ pub fn prompt_selection(
     hits_with_sizes: &[(Hit, u64)],
     root: &Path,
 ) -> anyhow::Result<Vec<(Hit, u64)>> {
-    let mut items = Vec::with_capacity(hits_with_sizes.len() + 1);
-    items.push("Select All".to_string());
-
-    for (hit, size) in hits_with_sizes {
-        let rel = format_relative_path(root, &hit.path);
-        let sz = format_size(*size);
-        items.push(format!("{} ({})", rel, sz));
-    }
+    // Every directory is its own checkbox and is pre-ticked. There is deliberately no
+    // "Select All" entry: dialoguer treats it as a plain checkbox that toggles nothing,
+    // so leaving it ticked after unticking every directory used to delete everything.
+    let items: Vec<String> = hits_with_sizes
+        .iter()
+        .map(|(hit, size)| format!("{} ({})", format_relative_path(root, &hit.path), format_size(*size)))
+        .collect();
 
     let defaults = vec![true; items.len()];
 
     let chosen = dialoguer::MultiSelect::with_theme(&dialoguer::theme::ColorfulTheme::default())
-        .with_prompt("Select directories to destroy")
+        .with_prompt("Select directories to destroy (space to toggle, enter to confirm)")
         .items(&items)
         .defaults(&defaults)
         .interact_opt()?;
 
+    // Esc / q cancels the prompt: nothing is deleted.
     let Some(chosen) = chosen else {
         return Ok(Vec::new());
     };
 
-    if chosen.is_empty() {
-        return Ok(Vec::new());
-    }
+    Ok(select_hits(&chosen, hits_with_sizes))
+}
 
-    let selected: Vec<(Hit, u64)> = if chosen.len() == 1 && chosen[0] == 0 {
-        // Only "Select All" was checked
-        hits_with_sizes.to_vec()
-    } else {
-        // Collect directories whose corresponding index (1..=N) was selected
-        chosen
-            .into_iter()
-            .filter(|&idx| idx >= 1)
-            .filter_map(|idx| hits_with_sizes.get(idx - 1).cloned())
-            .collect()
-    };
-
-    Ok(selected)
+/// Maps the indices ticked in the prompt back to their directories.
+/// Only exactly the ticked entries are returned; out-of-range indices are ignored.
+pub fn select_hits(chosen: &[usize], hits_with_sizes: &[(Hit, u64)]) -> Vec<(Hit, u64)> {
+    chosen
+        .iter()
+        .filter_map(|&idx| hits_with_sizes.get(idx).cloned())
+        .collect()
 }
 
 /// Creates a progress bar configured according to specification.
