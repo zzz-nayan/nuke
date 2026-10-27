@@ -291,3 +291,28 @@ fn test_delete_targets() {
     assert!(result.failures.is_empty());
     assert!(!dir1.exists());
 }
+
+#[test]
+fn test_select_hits_only_returns_ticked_entries() {
+    let hits: Vec<(Hit, u64)> = ["a", "b", "c"]
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            (
+                Hit { path: std::path::PathBuf::from(name), kind: "Test".to_string() },
+                i as u64,
+            )
+        })
+        .collect();
+
+    // Nothing ticked => nothing selected (previously "Select All" could delete everything).
+    assert!(nuke::ui::select_hits(&[], &hits).is_empty());
+
+    // Only the ticked entries come back, in order.
+    let picked = nuke::ui::select_hits(&[0, 2], &hits);
+    let names: Vec<_> = picked.iter().map(|(h, _)| h.path.to_str().unwrap()).collect();
+    assert_eq!(names, vec!["a", "c"]);
+
+    // Out-of-range indices are ignored rather than panicking.
+    assert_eq!(nuke::ui::select_hits(&[1, 99], &hits).len(), 1);
+}
